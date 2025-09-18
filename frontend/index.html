@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Serverless Text-to-Speech</title>
+<style>
+    * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+    }
+    body {
+        font-family: 'Poppins', sans-serif;
+        background: linear-gradient(120deg, #89f7fe, #66a6ff);
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    .container {
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(15px);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        padding: 35px;
+        width: 100%;
+        max-width: 700px;
+        color: #fff;
+    }
+    .header {
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    .header h1 {
+        font-size: 2.2em;
+        font-weight: 700;
+    }
+    .header p {
+        font-size: 1.1em;
+        opacity: 0.8;
+    }
+    label {
+        display: block;
+        margin-bottom: 8px;
+        font-weight: 600;
+    }
+    textarea, select {
+        width: 100%;
+        padding: 15px;
+        border: none;
+        border-radius: 12px;
+        font-size: 15px;
+        margin-bottom: 15px;
+        font-family: inherit;
+        outline: none;
+        transition: box-shadow 0.3s ease;
+    }
+    textarea {
+        resize: vertical;
+        min-height: 120px;
+    }
+    textarea:focus, select:focus {
+        box-shadow: 0 0 0 3px rgba(255,255,255,0.4);
+    }
+    .controls-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 15px;
+        margin-top: 10px;
+    }
+    .generate-btn {
+        width: 100%;
+        padding: 15px;
+        background: linear-gradient(120deg, #43cea2, #185a9d);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        font-size: 17px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .generate-btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 15px rgba(0,0,0,0.2);
+    }
+    .generate-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .character-count {
+        text-align: right;
+        font-size: 0.85em;
+        opacity: 0.9;
+        margin-bottom: 10px;
+    }
+    .character-count.warning { color: #ffeb3b; }
+    .character-count.danger { color: #f44336; }
+    .loading {
+        display: none;
+        text-align: center;
+        margin: 20px 0;
+    }
+    .spinner {
+        border: 4px solid rgba(255,255,255,0.3);
+        border-top: 4px solid white;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 12px;
+    }
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    .result {
+        display: none;
+        background: rgba(255,255,255,0.1);
+        border-radius: 15px;
+        padding: 20px;
+        margin-top: 20px;
+        text-align: center;
+        color: #fff;
+    }
+    .result.success { border: 2px solid #43cea2; }
+    .result.error { border: 2px solid #f44336; }
+    .audio-player audio {
+        width: 100%;
+        max-width: 400px;
+        margin-top: 15px;
+    }
+    .download-btn {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 10px 18px;
+        background: #43cea2;
+        color: #fff;
+        border-radius: 10px;
+        text-decoration: none;
+        transition: background 0.3s ease;
+    }
+    .download-btn:hover {
+        background: #2b7a67;
+    }
+    @media (max-width: 768px) {
+        .controls-row {
+            grid-template-columns: 1fr;
+        }
+        .container {
+            padding: 25px;
+        }
+    }
+</style>
+</head>
+<body>
+<div class="container">
+    <div class="header">
+        <h1>✨ Text-to-Speech</h1>
+        <p>Convert text into natural-sounding speech with AWS Polly</p>
+    </div>
+    <form id="ttsForm">
+        <label for="textInput">Enter your text:</label>
+        <textarea id="textInput" name="text" maxlength="3000" required placeholder="Type your text here..."></textarea>
+        <div id="characterCount" class="character-count">0 / 3000 characters</div>
+
+        <div class="controls-row">
+            <div>
+                <label for="voiceSelect">Voice:</label>
+                <select id="voiceSelect" name="voice">
+                    <option value="Joanna">Joanna (US, Female)</option>
+                    <option value="Matthew">Matthew (US, Male)</option>
+                    <option value="Amy">Amy (UK, Female)</option>
+                    <option value="Brian">Brian (UK, Male)</option>
+                </select>
+            </div>
+            <div>
+                <label for="formatSelect">Format:</label>
+                <select id="formatSelect" name="format">
+                    <option value="mp3">MP3</option>
+                    <option value="ogg_vorbis">OGG</option>
+                    <option value="pcm">PCM</option>
+                </select>
+            </div>
+            <div>
+                <label for="speedSelect">Speed:</label>
+                <select id="speedSelect" name="speed">
+                    <option value="x-slow">Extra Slow</option>
+                    <option value="slow">Slow</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="fast">Fast</option>
+                    <option value="x-fast">Extra Fast</option>
+                </select>
+            </div>
+        </div>
+        <button type="submit" class="generate-btn" id="generateBtn">🎤 Generate Speech</button>
+    </form>
+
+    <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Generating your audio...</p>
+    </div>
+    <div id="result" class="result"></div>
+</div>
+
+<script>
+    // ✅ Updated API Gateway URL
+    const API_BASE_URL = 'https://pa877apxx1.execute-api.us-east-1.amazonaws.com/prod';
+
+    const form = document.getElementById('ttsForm');
+    const textInput = document.getElementById('textInput');
+    const characterCount = document.getElementById('characterCount');
+    const generateBtn = document.getElementById('generateBtn');
+    const loading = document.getElementById('loading');
+    const result = document.getElementById('result');
+
+    // Character counter
+    textInput.addEventListener('input', function () {
+        const count = this.value.length;
+        const maxLength = 3000;
+        characterCount.textContent = `${count} / ${maxLength} characters`;
+        characterCount.className = 'character-count';
+        if (count > maxLength * 0.8) {
+            characterCount.classList.add('warning');
+        }
+        if (count > maxLength * 0.95) {
+            characterCount.classList.add('danger');
+        }
+    });
+
+    // Form submission
+    form.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const formData = new FormData(form);
+        const text = formData.get('text').trim();
+        if (!text) {
+            showError('Please enter some text to convert to speech.');
+            return;
+        }
+        if (text.length > 3000) {
+            showError('Text is too long. Maximum 3000 characters allowed.');
+            return;
+        }
+
+        setLoadingState(true);
+        hideResult();
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/speech`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    text: text,
+                    voice: formData.get('voice'),
+                    outputFormat: formData.get('format'),
+                    speed: formData.get('speed')
+                })
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+
+            if (data.success) {
+                showSuccess(data.data);
+            } else {
+                throw new Error(data.error || 'Unknown error occurred');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            showError(error.message || 'Failed to generate speech. Please try again.');
+        } finally {
+            setLoadingState(false);
+        }
+    });
+
+    function setLoadingState(isLoading) {
+        generateBtn.disabled = isLoading;
+        loading.style.display = isLoading ? 'block' : 'none';
+        generateBtn.textContent = isLoading ? '⏳ Generating...' : '🎤 Generate Speech';
+    }
+
+    function showSuccess(data) {
+        result.className = 'result success';
+        result.style.display = 'block';
+        result.innerHTML = `
+            <h3>✅ Speech Ready!</h3>
+            <p><strong>Voice:</strong> ${data.voice} | <strong>Format:</strong> ${data.format.toUpperCase()} | <strong>Length:</strong> ${data.textLength} characters</p>
+            <div class="audio-player">
+                <audio controls>
+                    <source src="${data.audioUrl}" type="${getAudioMimeType(data.format)}">
+                    Your browser does not support the audio element.
+                </audio>
+            </div>
+            <a href="${data.audioUrl}" download="speech.${getFileExtension(data.format)}" class="download-btn">📥 Download Audio</a>
+            <p style="margin-top: 12px; font-size: 0.85em; opacity: 0.8;">
+                <em>Expires: ${new Date(data.expiresAt).toLocaleString()}</em>
+            </p>
+        `;
+    }
+
+    function showError(message) {
+        result.className = 'result error';
+        result.style.display = 'block';
+        result.innerHTML = `<h3>⚠️ Error</h3><p>${message}</p>`;
+    }
+
+    function hideResult() { result.style.display = 'none'; }
+
+    function getAudioMimeType(format) {
+        const types = { mp3: 'audio/mpeg', ogg_vorbis: 'audio/ogg', pcm: 'audio/pcm' };
+        return types[format] || 'audio/mpeg';
+    }
+
+    function getFileExtension(format) {
+        const ext = { mp3: 'mp3', ogg_vorbis: 'ogg', pcm: 'pcm' };
+        return ext[format] || 'mp3';
+    }
+
+    // Initialize counter
+    textInput.dispatchEvent(new Event('input'));
+</script>
+</body>
+</html>
